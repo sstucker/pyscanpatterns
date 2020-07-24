@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Sun Jul  5 17:09:59 2020
-
 @author: sstucker
 """
 
@@ -12,43 +11,144 @@ from scipy import signal
 
 class ScanPattern:
 
-    def __init__(self, geometry, axial=False, pattern_rate=5, order=3, dac_samples_per_second=1000000, debug = False):
+    def set_geometry(self, params):
         """
-        :param geometry: The type of scan pattern to generate. Options include:
-            'raster': Conventional raster scan (C-scan)
-            'circle': Circular scan
-            'lemniscate': A figure-8 with two perpendicular B-scans
-            'rose': Odd petaled rhodonea function with n-perpendicular B-scans
-        :param axial: Whether or not to generate a Z-coordinate signal in the 3rd axis
-        :param rate: Rate in hz to complete a C scan
-        :param order: for use with 'rose' patterns, number of B-scans [3, 5, 7, 9]
-        :param ss: Sample rate of generated drive signals in samples per second
+        Define the geometry of the pattern, overwriting old geometry and recreating the pattern
+        :param params: List of parameters
+        :return: 0 on success
+        """
+        raise NotImplementedError()
+
+    def get_sample_rate(self):
+        raise NotImplementedError()
+
+    def get_signals(self):
+        raise NotImplementedError()
+
+    def get_trigger(self):
+        raise NotImplementedError()
+
+    def get_x(self):
+        raise NotImplementedError()
+
+    def get_y(self):
+        raise NotImplementedError()
+
+    def get_number_of_alines(self):
+        """
+        :return: The total number of line acquisitions per pattern
         """
 
-        self.pattern_rate = pattern_rate
-        self.fs = dac_samples_per_second
 
-        self._debug = debug
+class RasterScanPattern(ScanPattern):
+
+    def __init__(self, pattern_rate=10, dac_samples_per_second=1000000, init_params=[]):
+        """
+        :param rate: Rate in hz to complete a scan
+        :param dac_samples_per_second: Sample rate of generated drive signals in samples per second
+        """
+
+        self._debug = False
 
         self._x = np.array([])
         self._y = np.array([])
         self._cam = np.array([])
-        if axial:
-            self._z = np.array([])
+        self._fs = dac_samples_per_second
+        self._pattern_rate = pattern_rate
+        self._params = []
 
-        if geometry is 'raster':
-            self._generate_raster_scan
-        elif geometry is 'circe':
-            pass
-        elif geometry is 'lemniscate':
-            pass
-        elif geometry is 'rose':
-            pass
+        # Raster specific properties
+        self._alines = 100  # Default values
+        self._blines = 1
+
+        if len(init_params) > 0:
+            self._params = init_params
+            self.set_geometry(self._params)
+            self._generate_raster_scan()
         else:
-            print('Geometry mode ', geometry, ' not understood. Initializing in Raster mode.')
+            self._generate_raster_scan(self._alines, self._blines)  # Some default pattern
+
+    def get_raster_dimensions(self):
+        """
+        :return: [number of a-lines, number of b-lines]
+        """
+        return [self._alines, self._blines]
+
+    def get_number_of_alines(self):
+        return int(self._alines * self._blines)
+
+    def set_geometry(self, params):
+        """
+        :param params:
+            params[0]: Number of A-lines in raster scan
+            params[1]: Number of B-lines in raster scan
+            params[2]: Percentage of B-line scan time to be used for flyback signal. Default 5%
+            params[3]: Percentage of entire fast-axis length to trigger exposures along. The ends of the fast-
+            axis are prone to distortions as the galvos change direction
+            params[4]: Line exposure time in microseconds. Too short a time cannot properly be converted
+            depending on the sample rate. In these cases, the camera's fixed exposure time should be configured
+            params[5]:  List [FOV width (fast axis), FOV height (slow axis)]
+            params[6]: List [A-line spacing (fast axis), B-line spacing (slow axis)]
+        :return: 0 on success
+        """
+        self._params = params
+        try:
+            self._alines = params[0]
+            self._blines = params[1]
+        except IndexError:
+            return -1  # Not enough parameters to define the scan pattern
+        if len(self._params) >= 7:
+            self._generate_raster_scan(alines=self._params[0],
+                                       blines=self._params[1],
+                                       flyback_duty=self._params[2],
+                                       exposure_width=self._params[3],
+                                       exposure_time_us=self._params[4],
+                                       fov=self._params[5],
+                                       spacing=self._params[6])
+        elif len(self._params) == 6:
+            self._generate_raster_scan(alines=self._params[0],
+                                       blines=self._params[1],
+                                       flyback_duty=self._params[2],
+                                       exposure_width=self._params[3],
+                                       exposure_time_us=self._params[4],
+                                       fov=self._params[5])
+        elif len(self._params) == 5:
+            self._generate_raster_scan(alines=self._params[0],
+                                       blines=self._params[1],
+                                       flyback_duty=self._params[2],
+                                       exposure_width=self._params[3],
+                                       exposure_time_us=self._params[4])
+        elif len(self._params) == 4:
+            self._generate_raster_scan(alines=self._params[0],
+                                       blines=self._params[1],
+                                       flyback_duty=self._params[2],
+                                       exposure_width=self._params[3])
+        elif len(self._params) == 3:
+            self._generate_raster_scan(alines=self._params[0],
+                                       blines=self._params[1],
+                                       flyback_duty=self._params[2])
+        elif len(self._params) == 2:
+            self._generate_raster_scan(alines=self._params[0], blines=self._params[1])
+
+        else:
+            return -1
+
+        return 0
+
+    def get_sample_rate(self):
+        return self._fs
 
     def get_signals(self):
         return [self._x, self._y, self._cam]
+
+    def get_trigger(self):
+        return self._cam
+
+    def get_x(self):
+        return self._x
+
+    def get_y(self):
+        return self._y
 
     def _generate_raster_scan(self, alines, blines, flyback_duty=0.25, exposure_width=0.8, exposure_time_us=100, fov=None, spacing=None):
         """
@@ -58,15 +158,18 @@ class ScanPattern:
         :param flyback_duty: Percentage of B-line scan time to be used for flyback signal. Default 5%
         :param exposure_width: Percentage of entire fast-axis length to trigger exposures along. The ends of the fast-
             axis are prone to distortions as the galvos change direction
-        :param fov: [a, b] 2D field of view
-        :param spacing: [a, b] 2D spacing. Overrides fov definition if both are passed
+        :param exposure_time_us: Line exposure time in microseconds. Too short a time cannot properly be converted
+            depending on the sample rate. In these cases, the camera's fixed exposure time should be configured
+        :param fov: [FOV width (fast axis), FOV height (slow axis)] 2D field of view
+        :param spacing: [A-line spacing (fast axis), B-line spacing (slow axis)] 2D spacing. Overrides fov definition
+            if both are passed
         :return: -1 if error, 0 if successful
         """
 
-        exposure_time_in_samples = int(self.fs * exposure_time_us * 10**-6)
+        exposure_time_in_samples = int(self._fs * exposure_time_us * 10**-6)
 
-        pattern_period = 1 / self.pattern_rate
-        samples_per_pattern = int(self.fs / self.pattern_rate)
+        pattern_period = 1 / self._pattern_rate
+        samples_per_pattern = int(self._fs / self._pattern_rate)
         samples_per_bline = int(samples_per_pattern / blines)
         samples_per_flyback = int(flyback_duty * samples_per_bline)
 
@@ -118,9 +221,6 @@ class ScanPattern:
 
             plt.show()
 
-
-myPat = ScanPattern('raster')
-myPat._generate_raster_scan(10, 10)
-[x, y, cam] = myPat.get_signals()
+        return 0
 
 

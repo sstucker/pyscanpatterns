@@ -137,8 +137,8 @@ class RasterScanPattern(LineScanPattern):
     def get_y(self):
         return self._y
 
-    def generate(self, alines=64, blines=1, flyback_duty=0.2, exposure_width=0.9,
-                             fov=None, samples_on=None, samples_off=1, rotation_rad=0):
+    def generate(self, alines=64, blines=1, flyback_duty=0.2, exposure_width=0.8,
+                 fov=None, samples_on=2, samples_off=None, rotation_rad=0, slow_axis_step=False, trigger_blines=False):
         """
         Generates raster pattern. If no fov or spacing is passed, constrains FOV to -1, 1 voltage units
         :param alines: Number of A-lines in raster scan
@@ -153,84 +153,67 @@ class RasterScanPattern(LineScanPattern):
         :param rotation_rad: Angle in radians by which to rotate scan pattern
         :return: -1 if error, 0 if successful
         """
-        start = time.time()
 
-        if alines < 0 or blines < 0:
-            return -1
+        # Generate a single B-scan
+        samples_on = int(samples_on)
+
+        if samples_off is None:
+            samples_off = int(samples_on)
+        else:
+            samples_off = int(samples_off)
+
+        if fov is None:
+            fov = [1, 1]
 
         self._alines = int(alines)
         self._blines = int(blines)
 
-        if flyback_duty > 1 or exposure_width > 1:
-            return -1
+        period_samples = samples_on + samples_off
+        self._fs = self._max_rate * period_samples
 
-        if fov is None:
-            fov = [1, 1]
-        elif len(fov) is not 2:
-            return -1
+        # Build B-line trigger
+        bline_pulses = np.tile(np.append(np.ones(samples_on), np.zeros(samples_off)), self._alines)
+        bline_pad = np.zeros(int(len(bline_pulses) * (1 - exposure_width) / 2))
+        bline_trig_padded = np.concatenate([bline_pad, bline_pulses, bline_pad])
+        flyback_pad = np.zeros(int((flyback_duty * len(bline_trig_padded)) / 2))
 
-        samples_off = int(samples_off)
-        if samples_on is None:
-            samples_on = samples_off
-        else:
-            samples_on = int(samples_on)
+        bline_trig = np.concatenate([flyback_pad, bline_trig_padded, flyback_pad])
+        self._line_trig = np.tile(bline_trig, self._blines)
 
-        # Determine signal sizes and sample rate to achieve max camera trigger rate
-        samples_per_bline = (self._alines * (samples_off + samples_on)) * (1 / exposure_width)
-        samples_per_bline += samples_per_bline * flyback_duty
-        samples_per_bline = int(samples_per_bline)
+        # Build frame trigger
+        if trigger_blines:  # Frame trigger for each B-line
+            frame_trig_per_b = np.zeros(len(bline_trig))
+            frame_trig_per_b[0:samples_on] = 1
+            self._frame_trig = np.tile(frame_trig_per_b, self._blines)
+        else:  # If one trigger for entire volume
+            self._frame_trig = np.zeros(len(self._line_trig))
+            self._frame_trig[0:samples_on] = 1
 
-        samples_per_pattern = samples_per_bline * self._blines
-        samples_per_flyback = int(flyback_duty * samples_per_bline)
+        # Fast axis generation
+        x = np.concatenate([
+            np.linspace(0, fov[0] / 2, len(flyback_pad)),
+            np.linspace(fov[0] / 2, -fov[0] / 2, len(bline_trig_padded)),
+            np.linspace(-fov[0] / 2, 0, len(flyback_pad))
+        ])
+        self._x = np.tile(x, self._blines)
 
-        trigger_period_samples = samples_on + samples_off
-        self._fs = int(trigger_period_samples * self._max_rate)
+        # Slow axis generation
+        if slow_axis_step:  # Step function
+            pos = np.linspace(-fov[1] / 2, fov[1] / 2, self._blines)
+            self._y = np.array([])
+            for i in range(0, len(pos)):
+                flyto = np.linspace(pos[i - 1], pos[i], int(2 * len(flyback_pad)))
+                hold = pos[i] * np.ones(len(bline_trig_padded))
+                self._y = np.concatenate([self._y, flyto, hold])
+            self._y = np.roll(self._y, -len(flyback_pad))
+        else:  # Slow axis is a sawtooth
+            self._y = np.concatenate([
+                np.linspace(0, fov[1] / 2, len(flyback_pad)),
+                np.linspace(fov[1] / 2, -fov[1] / 2, self._blines * len(bline_trig_padded) + 2 * (self._blines - 1) * len(flyback_pad)),
+                np.linspace(-fov[1] / 2, 0, len(flyback_pad)),
+            ])
 
-        flyback_y = (1 / self._blines) * flyback_duty
-
-        # Generate exposure trigger pulse
-        bline_pulse = np.tile(np.concatenate([np.zeros(samples_off), np.ones(samples_on)]), self._alines)
-        bline_pulse_len = len(bline_pulse)
-
-        # Generate sawtooth signals
-        tx = np.linspace(np.pi * flyback_duty, 2 * np.pi * self._blines + np.pi * flyback_duty, samples_per_pattern)
-        x = signal.sawtooth(tx, width=flyback_duty)
-
-        ty = np.linspace(np.pi * flyback_y, 2 * np.pi + np.pi * flyback_y, samples_per_pattern)
-        y = signal.sawtooth(ty, width=flyback_y)
-
-        scan_axis_starts = np.arange(int(samples_per_flyback / 2), samples_per_pattern, samples_per_bline)
-        scan_axis_ends = np.arange(samples_per_bline - int(samples_per_flyback / 2), samples_per_pattern,
-                                   samples_per_bline)
-
-        scan_length_starts = scan_axis_starts + ((samples_per_bline - samples_per_flyback) * ((1 - exposure_width) / 2))
-        scan_length_ends = scan_axis_ends - ((samples_per_bline - samples_per_flyback) * ((1 - exposure_width) / 2))
-
-        exposures = np.zeros(samples_per_pattern)
-        for exposure_start in scan_length_starts.astype(int):
-            exposures[exposure_start:exposure_start+bline_pulse_len] = bline_pulse
-
-        self._line_trig = exposures
-        self._frame_trig = np.zeros(len(exposures))
-
-        for i in range(len(exposures)):
-            if exposures[i]:
-                self._frame_trig[i - 8:i - 8 + samples_on] = 1
-                break
-
-        x, y = rotfunc(x, y, rotation_rad)
-
-        # Scale X and Y by FOV
-        self._x = x * (fov[0] / 2)
-        self._y = y * (fov[1] / 2)
-
-        if self._blines is 1:
-            self._y = np.zeros(len(self._x))
-
-        self._pattern_rate = self._fs / len(self._line_trig)
-
-        dac_period_us = (1 / self._fs) * 10 ** 6
-        trig_period_samples = samples_on + samples_off
+        self._pattern_rate = 1 / ((1 / self._fs) * len(self._y))
 
         return 0
 
@@ -462,17 +445,21 @@ class RoseScanPattern(LineScanPattern):
 
 if __name__ == "__main__":
 
-    # TODO rebuild raster generator
     raster = RasterScanPattern()
-    raster.generate(10, 10)
+    raster.generate(10, 1)
 
     x = raster.get_x()
     y = raster.get_y()
     l = raster.get_line_trig()
+    f = raster.get_frame_trig()
+
+    print("Raster pattern rate", raster.get_pattern_rate(), 'hz')
+    print("DAC sample rate", raster.get_sample_rate(), 'hz')
 
     import matplotlib.pyplot as plt
 
     plt.plot(x)
     plt.plot(y)
     plt.plot(l)
+    plt.plot(f)
     plt.show()

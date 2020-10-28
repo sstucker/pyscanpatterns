@@ -87,7 +87,7 @@ class LineScanPattern:
 
 class RasterScanPattern(LineScanPattern):
 
-    def __init__(self, max_trigger_rate=70000):
+    def __init__(self, max_trigger_rate=76000):
         """
         :param max_trigger_rate: The maximum rate that the camera can be triggered in Hz. The scan pattern and its
         rate will be determined to achieve but not exceed this rate. Default < 76 kHz.
@@ -137,8 +137,8 @@ class RasterScanPattern(LineScanPattern):
     def get_y(self):
         return self._y
 
-    def generate(self, alines=64, blines=1, flyback_duty=0.15, exposure_width=0.6,
-                             fov=None, samples_on=None, samples_off=2, rotation_rad=0):
+    def generate(self, alines=64, blines=1, flyback_duty=0.2, exposure_width=0.9,
+                             fov=None, samples_on=None, samples_off=1, rotation_rad=0):
         """
         Generates raster pattern. If no fov or spacing is passed, constrains FOV to -1, 1 voltage units
         :param alines: Number of A-lines in raster scan
@@ -461,6 +461,18 @@ class RoseScanPattern(LineScanPattern):
 
 
 if __name__ == "__main__":
-    rose = RoseScanPattern()
-    rose.generate(5)
-    rose.generate(7)
+
+    # TODO rebuild raster generator
+    raster = RasterScanPattern()
+    raster.generate(10, 10)
+
+    x = raster.get_x()
+    y = raster.get_y()
+    l = raster.get_line_trig()
+
+    import matplotlib.pyplot as plt
+
+    plt.plot(x)
+    plt.plot(y)
+    plt.plot(l)
+    plt.show()

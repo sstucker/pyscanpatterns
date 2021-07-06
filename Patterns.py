@@ -24,6 +24,18 @@ class LineScanPattern:
     geometry.
     """
 
+    def get_line_trig(self):
+        return self._line_trig
+
+    def get_frame_trig(self):
+        return self._frame_trig
+
+    def get_x(self):
+        return self._x
+
+    def get_y(self):
+        return self._y
+
     def get_sample_rate(self):
         """
         :return: The approximate sample rate in hz that samples should be generated such that the pattern is
@@ -34,33 +46,6 @@ class LineScanPattern:
     def get_pattern_rate(self):
         """
         :return: The approximate rate at which the pattern is completed by the scanner given by the sample rate and number of samples.
-        """
-        raise NotImplementedError()
-
-    def get_line_trig(self):
-        """
-        :return: A continuous waveform representing the digital (1 and 0) triggering of the line camera's exposure.
-        """
-        raise NotImplementedError()
-
-    def get_frame_trig(self):
-        """
-        :return: A continuous waveform representing the digital (1 and 0) triggering of the beginning of a new
-        repetition of the pattern. This is used to trigger the frame grabber
-        """
-        raise NotImplementedError()
-
-    def get_x(self):
-        """
-        :return: A continuous waveform representing the analog signal for driving the first dimension of the scanner.
-        In voltage units that must be converted to physical units by the user.
-        """
-        raise NotImplementedError()
-
-    def get_y(self):
-        """
-        :return: A continuous waveform representing the analog signal for driving the second dimension of the scanner.
-        In voltage units that must be converted to physical units by the user.
         """
         raise NotImplementedError()
 
@@ -114,18 +99,6 @@ class Figure8ScanPattern(LineScanPattern):
 
     def get_signals(self):
         return [self._line, self._frame, self._x, self._y]
-
-    def get_line_trig(self):
-        return self._line
-
-    def get_frame_trig(self):
-        return self._frame
-
-    def get_x(self):
-        return self._x
-
-    def get_y(self):
-        return self._y
 
     def generate(self, aline_width=0.05, aline_per_b=32, samples_on=1, samples_off=None, rotation_rad=0):
 
@@ -218,18 +191,6 @@ class RoseScanPattern(LineScanPattern):
     def get_signals(self):
         return [self._line, self._frame, self._x, self._y]
 
-    def get_line_trig(self):
-        return self._line
-
-    def get_frame_trig(self):
-        return self._frame
-
-    def get_x(self):
-        return self._x
-
-    def get_y(self):
-        return self._y
-
     def generate(self, p, aline_width, aline_per_b, samples_on=2, samples_off=None, rotation_rad=0):
 
         samples_on = int(samples_on)
@@ -246,7 +207,7 @@ class RoseScanPattern(LineScanPattern):
         H = 5  # 1 / H is the proportion of the B-line length used for flyback in samples
 
         p = int(p)
-        if p % 2 is 0:
+        if p % 2 == 0:
             return  # TODO implement even petaled roses
         #            k = 2*p
         #            p0 = 0
@@ -306,6 +267,87 @@ class RoseScanPattern(LineScanPattern):
         self._pattern_rate = 1 / ((1 / self._fs) * len(x))
 
 
+class BidirectionalRasterScanPattern(LineScanPattern):
+    
+    def __init__(self, max_trigger_rate=76000):
+        self._max_rate = max_trigger_rate
+
+        self._pattern_rate = None
+
+        self._x = np.array([])
+        self._y = np.array([])
+        self._line_trig = np.array([])
+        self._frame_trig = np.array([])
+        self._fs = None
+        self._alines = None
+        self._blines = None
+        self._aline_repeat = None
+        
+    def get_dimensions(self):
+        """
+        :return: [number of a-lines, number of b-lines]
+        """
+        return [self._alines, self._blines]
+
+    def get_total_number_of_alines(self):
+        return int(self._alines * self._blines)
+
+    def get_sample_rate(self):
+        return self._fs
+
+    def get_pattern_rate(self):
+        return self._pattern_rate
+
+    def get_signals(self):
+        return [self._line_trig, self._frame_trig, self._x, self._y]
+
+    def get_aline_repeat(self):
+        return self._aline_repeat
+
+    def generate(self, alines=64, blines=64, exposure_percentage=0.7, frame_flyback=True, fov=None, samples_on=2, samples_off=None):
+        
+        # Generate a single B-scan
+        samples_on = int(samples_on)
+
+        if samples_off is None:
+            samples_off = int(samples_on)
+        else:
+            samples_off = int(samples_off)
+
+        if fov is None:
+            fov = [1, 1]
+
+        self._alines = int(alines)
+        self._blines = int(blines)
+
+        period_samples = samples_on + samples_off
+        self._fs = self._max_rate * period_samples
+        
+        bline_trig = np.tile(np.concatenate([np.ones(samples_on), np.zeros(samples_off)]), alines)
+        bline_pad_len = int((1 - exposure_percentage) / 2 * len(bline_trig))
+        bline_trig = np.concatenate([np.zeros(bline_pad_len), bline_trig, np.zeros(bline_pad_len)])
+        
+        fast_axis_scan = np.array([])
+        
+        print(len(bline_trig))
+        
+        fast_range = (fov[0] + fov[0] * (1 - exposure_percentage)) / 2  # +/-
+        
+        for i in range(blines):
+            if i % 2 == 0:
+                xs = np.linspace(fast_range, -fast_range, len(bline_trig) + 1)[1::]
+            else:
+                xs = np.linspace(-fast_range, fast_range, len(bline_trig + 1))[1::]
+            print(xs)
+            fast_axis_scan = np.append(fast_axis_scan, xs)
+        
+        print(len(fast_axis_scan))
+        
+        plt.figure(99)
+        plt.plot(fast_axis_scan)
+            
+        
+
 class RasterScanPattern(LineScanPattern):
 
     def __init__(self, max_trigger_rate=75900):
@@ -344,18 +386,6 @@ class RasterScanPattern(LineScanPattern):
 
     def get_signals(self):
         return [self._line_trig, self._frame_trig, self._x, self._y]
-
-    def get_line_trig(self):
-        return self._line_trig
-
-    def get_frame_trig(self):
-        return self._frame_trig
-
-    def get_x(self):
-        return self._x
-
-    def get_y(self):
-        return self._y
 
     def get_aline_repeat(self):
         return self._aline_repeat
@@ -470,26 +500,26 @@ if __name__ == "__main__":
 
     plt.close('all')
 
-    pat = RasterScanPattern()
+    pat = BidirectionalRasterScanPattern()
 
     # TODO fix B = 1
-    pat.generate(alines=16, blines=16, samples_on=1, slow_axis_step=True, fast_axis_step=False)
-    plt.figure(1)
+    pat.generate(alines=16, blines=16, fov=[1,1])
+    
+    # plt.figure(1)
+    # plt.subplot(3, 1, 2)
+    # plt.plot(pat.get_x())
+    # plt.plot(pat.get_y())
+    # plt.xlim(0, len(pat.get_x()))
 
-    plt.subplot(3, 1, 2)
-    plt.plot(pat.get_x())
-    plt.plot(pat.get_y())
-    plt.xlim(0, len(pat.get_x()))
+    # plt.subplot(3, 1, 3)
+    # plt.plot(pat.get_frame_trig())
+    # plt.plot(pat.get_line_trig())
+    # plt.xlim(0, len(pat.get_x()))
 
-    plt.subplot(3, 1, 3)
-    plt.plot(pat.get_frame_trig())
-    plt.plot(pat.get_line_trig())
-    plt.xlim(0, len(pat.get_x()))
+    # ax = plt.subplot(3, 1, 1)
+    # plt.plot(pat.get_x(), pat.get_y(), '-k', linewidth=0.1, alpha=0.5)
+    # plt.scatter(pat.get_x()[pat.get_line_trig().astype(bool)[0:len(pat.get_x())]],
+    #             pat.get_y()[pat.get_line_trig().astype(bool)[0:len(pat.get_y())]], s=0.2)
+    # ax.set_aspect('equal')
 
-    ax = plt.subplot(3, 1, 1)
-    plt.plot(pat.get_x(), pat.get_y(), '-k', linewidth=0.1, alpha=0.5)
-    plt.scatter(pat.get_x()[pat.get_line_trig().astype(bool)[0:len(pat.get_x())]],
-                pat.get_y()[pat.get_line_trig().astype(bool)[0:len(pat.get_y())]], s=0.2)
-    ax.set_aspect('equal')
-
-    plt.show()
+    # plt.show()

@@ -304,7 +304,7 @@ class BidirectionalRasterScanPattern(LineScanPattern):
     def get_aline_repeat(self):
         return self._aline_repeat
 
-    def generate(self, alines=64, blines=64, exposure_percentage=0.7, frame_flyback=True, fov=None, samples_on=2, samples_off=None):
+    def generate(self, alines=64, blines=64, exposure_percentage=0.7, flyback_duty=0.1, fov=None, samples_on=1, samples_off=None):
         
         # Generate a single B-scan
         samples_on = int(samples_on)
@@ -323,30 +323,41 @@ class BidirectionalRasterScanPattern(LineScanPattern):
         period_samples = samples_on + samples_off
         self._fs = self._max_rate * period_samples
         
-        bline_trig = np.tile(np.concatenate([np.ones(samples_on), np.zeros(samples_off)]), alines)
+        bline_trig = np.tile(np.concatenate([np.ones(samples_on), np.zeros(samples_off)]), self._alines)
         bline_pad_len = int((1 - exposure_percentage) / 2 * len(bline_trig))
         bline_trig = np.concatenate([np.zeros(bline_pad_len), bline_trig, np.zeros(bline_pad_len)])
         
         fast_axis_scan = np.array([])
-        
-        print(len(bline_trig))
+        slow_axis_scan = np.array([])
         
         fast_range = (fov[0] + fov[0] * (1 - exposure_percentage)) / 2  # +/-
+        slow_range = fov[1] / 2
         
+        bpos = np.linspace(-slow_range, slow_range, self._blines)
         for i in range(blines):
             if i % 2 == 0:
                 xs = np.linspace(fast_range, -fast_range, len(bline_trig) + 1)[1::]
             else:
-                xs = np.linspace(-fast_range, fast_range, len(bline_trig + 1))[1::]
-            print(xs)
+                xs = np.linspace(-fast_range, fast_range, len(bline_trig) + 1)[1::]
             fast_axis_scan = np.append(fast_axis_scan, xs)
         
-        print(len(fast_axis_scan))
+        for i in range(len(bpos) - 1): 
+            slow_axis_scan = np.append(slow_axis_scan, np.concatenate([np.ones(len(bline_trig) - bline_pad_len) * bpos[i],
+                                                                       np.linspace(bpos[i], bpos[i + 1], bline_pad_len + 1)[1::]]))
+        slow_axis_scan = np.append(slow_axis_scan, np.ones(len(bline_trig) - bline_pad_len) * bpos[-1])
         
-        plt.figure(99)
-        plt.plot(fast_axis_scan)
-            
         
+        # flyback_slow = sigmoidspace(slow_axis_scan[-1], slow_axis_scan[0], bline_pad_len)
+        flyback_slow = np.linspace(slow_axis_scan[-1], slow_axis_scan[0], bline_pad_len)
+        
+        self._x = fast_axis_scan
+        self._y = np.concatenate([slow_axis_scan, flyback_slow])
+        self._line_trig = np.tile(bline_trig, self._blines)
+        
+        self._frame_trig = np.zeros(len(self._line_trig))
+        self._frame_trig[0:samples_on] = 1
+        
+        self._pattern_rate = 1 / (len(self._x) * (1 / self._fs))
 
 class RasterScanPattern(LineScanPattern):
 
@@ -505,21 +516,21 @@ if __name__ == "__main__":
     # TODO fix B = 1
     pat.generate(alines=16, blines=16, fov=[1,1])
     
-    # plt.figure(1)
-    # plt.subplot(3, 1, 2)
-    # plt.plot(pat.get_x())
-    # plt.plot(pat.get_y())
-    # plt.xlim(0, len(pat.get_x()))
+    plt.figure(1)
+    plt.subplot(3, 1, 2)
+    plt.plot(pat.get_x())
+    plt.plot(pat.get_y())
+    plt.xlim(0, len(pat.get_x()))
 
-    # plt.subplot(3, 1, 3)
-    # plt.plot(pat.get_frame_trig())
-    # plt.plot(pat.get_line_trig())
-    # plt.xlim(0, len(pat.get_x()))
+    plt.subplot(3, 1, 3)
+    plt.plot(pat.get_frame_trig())
+    plt.plot(pat.get_line_trig())
+    plt.xlim(0, len(pat.get_x()))
 
-    # ax = plt.subplot(3, 1, 1)
-    # plt.plot(pat.get_x(), pat.get_y(), '-k', linewidth=0.1, alpha=0.5)
-    # plt.scatter(pat.get_x()[pat.get_line_trig().astype(bool)[0:len(pat.get_x())]],
-    #             pat.get_y()[pat.get_line_trig().astype(bool)[0:len(pat.get_y())]], s=0.2)
-    # ax.set_aspect('equal')
+    ax = plt.subplot(3, 1, 1)
+    plt.plot(pat.get_x(), pat.get_y(), '-k', linewidth=0.1, alpha=0.5)
+    plt.scatter(pat.get_x()[pat.get_line_trig().astype(bool)[0:len(pat.get_x())]],
+                pat.get_y()[pat.get_line_trig().astype(bool)[0:len(pat.get_y())]], s=0.2)
+    ax.set_aspect('equal')
 
-    # plt.show()
+    plt.show()

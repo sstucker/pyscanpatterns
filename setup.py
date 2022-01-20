@@ -73,15 +73,12 @@ setup(
     author_email='sstucker@bu.edu',
     python_requires='>=3.6.0',
     install_requires=[
-        'h5py>=3.1.0',
         'numpy',
         'setuptools',
-        'pip',
-        'termcolor',
-        'colorama',
+        'pip'
     ],
     url='https://github.com/sstucker/PyScanPattern',
-    packages=find_packages(exclude=('tests', 'gen')),
+    packages=find_packages(exclude=('tests')),
     include_package_data=True,
     license='GPLv3',
     classifiers=[

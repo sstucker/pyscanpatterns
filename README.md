@@ -1,4 +1,6 @@
-# PyScanPattern
+![testing](https://github.com/BUNPC/pyscanpatterns/actions/workflows/test.yml/badge.svg)
+
+# PyScanPatterns
 Parametric scan patterns for laser scanning microscopy.
 
 Galvo drive signals, line camera/PMT exposure triggers, and frame/digitizer triggers are generated given a scan type and parameters.

@@ -746,7 +746,7 @@ if __name__ == '__main__':
     
     for i, (pattern, title, fname) in enumerate(zip(patterns, titles, fnames)):
         
-        fig = plt.figure(i, constrained_layout=False, figsize=(4, 5))
+        fig = plt.figure(i, constrained_layout=False, figsize=(5, 6))
         
         gs = fig.add_gridspec(nrows=3, ncols=1, hspace=1)
         ax1 = fig.add_subplot(gs[0, 0])

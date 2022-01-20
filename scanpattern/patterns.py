@@ -151,7 +151,7 @@ class Figure8ScanPattern(LineScanPattern):
         G = np.pi / 2.5  # Cylical point at which B-scans begin in the figure
         A = 1 / 1.6289944852363252  # Factor such that B-scans given a G are normalized in length
         AY = 1.223251  # Stretch factor along second axis to achieve perpendicular B-scans
-        H = 5  # 1 / H is the proportion of the B-line length used for flyback in samples
+        H = h  # 1 / H is the proportion of the B-line length used for flyback in samples
 
         def fig8(t):
             x = A * np.cos(t)
@@ -176,8 +176,8 @@ class Figure8ScanPattern(LineScanPattern):
 
         x, y = _rotfunc(x, y, rotation_rad)
 
-        fb = np.zeros(len(x_fb0))
-        line_trigger = np.concatenate([btrig, fb, btrig, fb])
+        fb = np.zeros(len(t_fb0))
+        line_trigger = np.concatenate([btrig[0:-1], fb[0:-1], btrig[0:-1], fb[0:-1]])
         frame_start = np.zeros(len(line_trigger))
         frame_start[0:samples_on] = 1
 
@@ -218,7 +218,7 @@ class RoseScanPattern(LineScanPattern):
         return int(self.aline_per_b * self._p)
 
     def generate(self, p: int, aline_width: float, aline_per_b: int, max_trigger_rate: float,
-                 samples_on: int = 1, samples_off: int = None, rotation_rad: float = 0, h: float = 5):
+                 samples_on: int = 1, samples_off: int = None, rotation_rad: float = 0, h: float = 6):
         """Generate a Rose pattern: a pattern consisting of any number of orthogonal B-scans.
 
         For a rose pattern with 2 B-scans, use a `Figure8ScanPattern`.
@@ -231,7 +231,7 @@ class RoseScanPattern(LineScanPattern):
             samples_on (int): Optional. The number of trigger samples to drive high for each exposure. Default 2.
             samples_off (int): Optional. The number of trigger samples to drive low after each exposure. By default, equivalent to `samples_on`.
             rotation_rad (float): Optional. Rotates the scan. Default 0.
-            h (float): Optional. 1 / H is the proportion of the B-line length to exclude from the scan for flyback. Default 5.
+            h (float): Optional. 1 / H is the proportion of the B-line length to exclude from the scan for flyback. Default 6.
         """
 
         self.p = p
@@ -262,7 +262,7 @@ class RoseScanPattern(LineScanPattern):
         self._p = int(p)
 
         b_frac = 0.2
-        H = 5  # 1 / H is the proportion of the B-line length used for flyback in samples
+        H = h  # 1 / H is the proportion of the B-line length used for flyback in samples
 
         period_samples = samples_on + samples_off
         self._sample_rate = self.max_trigger_rate * period_samples
@@ -455,7 +455,7 @@ class RasterScanPattern(LineScanPattern):
         return int((self.alines * self.aline_repeat) * self.blines)
 
     def generate(self, alines: int, blines: int, max_trigger_rate: float, flyback_duty: float = 0.2,
-                 exposure_fraction: float = 0.8, fov: list = None, samples_on: int = 2, samples_off: int = None,
+                 exposure_fraction: float = 0.7, fov: list = None, samples_on: int = 2, samples_off: int = None,
                  samples_park: int = 1, samples_step: int = 1, rotation_rad: float = 0, fast_axis_step: bool = False,
                  slow_axis_step: bool = False, aline_repeat: int = 1, trigger_blines: bool = False):
         """Generate a raster pattern.
@@ -710,3 +710,63 @@ class BlineRepeatedRasterScan(LineScanPattern):
         self._pattern_rate = 1 / ((1 / self._sample_rate) * len(self._x))
 
         self._x, self._y = _rotfunc(self._x, self._y, rotation_rad)
+
+if __name__ == '__main__':
+    
+    print('Generating figures...')
+    
+    import matplotlib
+    import matplotlib.pyplot as plt
+    
+
+    matplotlib.rcParams.update({'font.size': 20, 'font.family': 'monospace'})
+    
+    patterns = [
+        RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10),
+        Figure8ScanPattern(1, 16, 1, samples_on=1, samples_off=10),
+        RoseScanPattern(3, 1, 16, 1, samples_on=1, samples_off=10),
+        RoseScanPattern(5, 1, 16, 1, samples_on=1, samples_off=10),
+        ]
+    
+    titles = [
+        'Raster',
+        'Figure-8',
+        'Rose p=3',
+        'Rose p=5',
+        ]
+    
+    fnames = [
+        'raster.png',
+        'fig8.png',
+        'rose3.png',
+        'rose5.png',
+        ]
+    
+    for i, (pattern, title, fname) in enumerate(zip(patterns, titles, fnames)):
+        
+        fig = plt.figure(i, constrained_layout=False, figsize=(7, 7))
+        
+        gs = fig.add_gridspec(nrows=3, ncols=1, hspace=1)
+        ax1 = fig.add_subplot(gs[0, 0])
+        ax2 = fig.add_subplot(gs[1:, 0])
+
+        ax1.set_title(title + '\n')
+        ax1.plot(pattern.x)
+        ax1.plot(pattern.y)
+        ax1.stem(pattern.line_trigger, markerfmt='None', linefmt='black')
+        ax1.set_frame_on(False)
+        ax1.set_xticks([])
+        ax1.set_yticks([])
+        
+        ax2.set_aspect('equal')
+        ax2.plot(np.tile(pattern.x, 2), np.tile(pattern.y, 2), color='lightgrey')
+        ax2.scatter(pattern.x[pattern.line_trigger.astype(bool)],
+                    pattern.y[pattern.line_trigger.astype(bool)],
+                    marker='.', color='black', zorder=10)
+        ax2.set_frame_on(False)
+        ax2.set_xticks([])
+        ax2.set_yticks([])
+        
+        fig.savefig('img/' + fname)
+        # plt.close(i)
+    

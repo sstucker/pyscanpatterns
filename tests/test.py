@@ -1,5 +1,5 @@
 import unittest
-from scanpattern import *  
+from scanpatterns import *  
 
 def _print_line_scan_pattern(pattern: LineScanPattern):
     print('Pattern type:', pattern.__class__.__name__)

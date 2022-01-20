@@ -70,11 +70,13 @@ class LineScanPattern:
     def pattern_rate(self):
         """The approximate rate at which the pattern is specified to be completed by the scanner."""
         return self._pattern_rate
-
+    
+    @property
     def dimensions(self):
         """An array of dimensions which orient the A-scans with respect to one another. i.e. a raster pattern's first and second dimension represent the height and width of the pattern in A-lines."""
         raise NotImplementedError()
-
+    
+    @property
     def total_number_of_alines(self):
         """The total number of point acquisitions per pattern."""
         raise NotImplementedError()
@@ -86,7 +88,7 @@ class LineScanPattern:
 
 class Figure8ScanPattern(LineScanPattern):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__()
 
         self.aline_width = None
@@ -99,9 +101,14 @@ class Figure8ScanPattern(LineScanPattern):
 
         self.aline_per_b = None
 
+        if len(args) > 0:
+            self.generate(*args, **kwargs)
+
+    @property
     def dimensions(self):
         return [self.aline_per_b, 2]
 
+    @property
     def total_number_of_alines(self):
         return int(self.aline_per_b * 2)
 
@@ -187,7 +194,7 @@ class Figure8ScanPattern(LineScanPattern):
 
 class RoseScanPattern(LineScanPattern):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__()
 
         self.p = None
@@ -199,9 +206,14 @@ class RoseScanPattern(LineScanPattern):
         self.rotation_rad = None
         self.h = None
 
+        if len(args) > 0:
+            self.generate(*args, **kwargs)
+
+    @property
     def dimensions(self):
         return [self.aline_per_b, self._p]
 
+    @property
     def total_number_of_alines(self):
         return int(self.aline_per_b * self._p)
 
@@ -304,7 +316,7 @@ class RoseScanPattern(LineScanPattern):
 
 class BidirectionalRasterScanPattern(LineScanPattern):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__()
 
         self.alines = None
@@ -316,10 +328,15 @@ class BidirectionalRasterScanPattern(LineScanPattern):
         self.samples_on = None
         self.samples_off = None
 
+        if len(args) > 0:
+            self.generate(*args, **kwargs)
+
+    @property
     def dimensions(self):
         """Returns [number of a-lines, number of b-lines]."""
         return [self.alines, self.blines]
 
+    @property
     def total_number_of_alines(self):
         return int(self.alines * self.blines)
 
@@ -397,7 +414,7 @@ class BidirectionalRasterScanPattern(LineScanPattern):
 
         self._line_trigger = np.concatenate([np.tile(bline_trig, self.blines), np.zeros(slow_fb_len)])
 
-        self._frame_trigger = np.zeros(len(self._line_trig))
+        self._frame_trigger = np.zeros(len(self._line_trigger))
         self._frame_trigger[0:samples_on] = 1
 
         self._pattern_rate = 1 / (len(self._x) * (1 / self._sample_rate))
@@ -405,7 +422,7 @@ class BidirectionalRasterScanPattern(LineScanPattern):
 
 class RasterScanPattern(LineScanPattern):
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
 
         super().__init__()
 
@@ -425,15 +442,17 @@ class RasterScanPattern(LineScanPattern):
         self.aline_repeat = None
         self.trigger_blines = None
 
+        if len(args) > 0:
+            self.generate(*args, **kwargs)
+
+    @property
     def dimensions(self):
         """Returns [number of a-lines, number of b-lines]."""
         return [self.alines, self.blines]
 
+    @property
     def total_number_of_alines(self):
         return int((self.alines * self.aline_repeat) * self.blines)
-
-    def aline_repeat(self):
-        return self.aline_repeat
 
     def generate(self, alines: int, blines: int, max_trigger_rate: float, flyback_duty: float = 0.2,
                  exposure_fraction: float = 0.8, fov: list = None, samples_on: int = 2, samples_off: int = None,
@@ -569,7 +588,7 @@ class RasterScanPattern(LineScanPattern):
 
 class BlineRepeatedRasterScan(LineScanPattern):
     
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
         super().__init__()
         
         self.alines = None
@@ -585,11 +604,16 @@ class BlineRepeatedRasterScan(LineScanPattern):
         self.samples_step = None
         self.rotation_rad = None
         self.slow_axis_step = None
-        
+
+        if len(args) > 0:
+            self.generate(*args, **kwargs)
+
+    @property
     def dimensions(self):
         """Returns [number of a-lines, number of b-lines]."""
         return [self.alines, self.blines]
 
+    @property
     def total_number_of_alines(self):
         return int(self.alines * (self.blines * self.bline_repeat))
     
@@ -683,5 +707,6 @@ class BlineRepeatedRasterScan(LineScanPattern):
         self._y = slow_axis_scan
         self._line_trigger = line_trig
         self._frame_trigger = frame_trig
+        self._pattern_rate = 1 / ((1 / self._sample_rate) * len(self._x))
 
         self._x, self._y = _rotfunc(self._x, self._y, rotation_rad)

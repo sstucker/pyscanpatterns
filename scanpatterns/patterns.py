@@ -746,13 +746,13 @@ if __name__ == '__main__':
     
     for i, (pattern, title, fname) in enumerate(zip(patterns, titles, fnames)):
         
-        fig = plt.figure(i, constrained_layout=False, figsize=(5, 6))
+        fig = plt.figure(i, constrained_layout=False, figsize=(5, 5))
         
-        gs = fig.add_gridspec(nrows=3, ncols=1, hspace=1)
+        gs = fig.add_gridspec(nrows=3, ncols=1, hspace=0.01)
         ax1 = fig.add_subplot(gs[0, 0])
         ax2 = fig.add_subplot(gs[1:, 0])
 
-        ax1.set_title(title + '\n')
+        ax1.set_title(title, pad=2)
         ax1.plot(pattern.x)
         ax1.plot(pattern.y)
         ax1.stem(pattern.line_trigger, markerfmt='None', linefmt='black')
@@ -770,5 +770,6 @@ if __name__ == '__main__':
         ax2.set_yticks([])
         
         fig.savefig('img/' + fname, dpi=DPI)
+        
         plt.close(i)
     

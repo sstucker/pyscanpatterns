@@ -11,9 +11,9 @@ from shutil import rmtree
 
 from setuptools import find_packages, setup, Command
 
-from scanpattern.__version__ import __version__ as VERSION
+from scanpatterns.__version__ import __version__ as VERSION
 
-NAME = 'scanpattern'
+NAME = 'scanpatterns'
 
 about = {}
 about['__version__'] = VERSION

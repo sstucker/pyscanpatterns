@@ -713,6 +713,8 @@ class BlineRepeatedRasterScan(LineScanPattern):
 
 if __name__ == '__main__':
     
+    DPI = 96
+    
     print('Generating figures...')
     
     import matplotlib
@@ -744,7 +746,7 @@ if __name__ == '__main__':
     
     for i, (pattern, title, fname) in enumerate(zip(patterns, titles, fnames)):
         
-        fig = plt.figure(i, constrained_layout=False, figsize=(7, 7))
+        fig = plt.figure(i, constrained_layout=False, figsize=(5, 6))
         
         gs = fig.add_gridspec(nrows=3, ncols=1, hspace=1)
         ax1 = fig.add_subplot(gs[0, 0])
@@ -767,6 +769,6 @@ if __name__ == '__main__':
         ax2.set_xticks([])
         ax2.set_yticks([])
         
-        fig.savefig('img/' + fname)
-        # plt.close(i)
+        fig.savefig('img/' + fname, dpi=DPI)
+        plt.close(i)
     

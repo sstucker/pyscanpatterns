@@ -1,5 +1,5 @@
 import numpy as np
-
+import warnings
 
 def _sigmoidspace(start, stop, n, b=1):
     """Interpolate n points of a sigmoidal function between start and stop.
@@ -396,26 +396,13 @@ class RasterScanPattern(LineScanPattern):
 
         self.alines = int(alines)
         self.blines = int(blines)
-        
-        self.fov = fov
-
-        self.samples_on = int(samples_on)
-        self.samples_settle = int(samples_settle)
-        self.samples_step = int(samples_step)
 
         self.aline_repeat = int(aline_repeat)
         self.bline_repeat = int(bline_repeat)
-
+  
         self.fast_axis_step = fast_axis_step
-        self.slow_axis_step = slow_axis_step
-        
-        self.rotation_rad = rotation_rad
-
-        if samples_off is None:
-            self.samples_off = int(samples_on)
-        else:
-            self.samples_off = int(samples_off)
-
+        self.slow_axis_step = slow_axis_step  
+  
         if aline_repeat < 2:
             self.aline_repeat = 1
         else:
@@ -426,42 +413,70 @@ class RasterScanPattern(LineScanPattern):
             self.bline_repeat = 1
         else:
             # B-line repeat must use stepped slow axis
-            self.slow_axis_step = True
+            self.slow_axis_step = True  
+  
+        self.bidirectional = bool(bidirectional)
+        if self.bidirectional:  # Lots of settings are incompatible with bidirectional=True
+            if self.aline_repeat != 1:
+                self.aline_repeat = 1
+                warnings.warn('Bidirectional repeated A-lines not supported. Using aline_repeat=1')
+            if self.fast_axis_step:
+                self.fast_axis_step = False
+                warnings.warn('Bidirectional scans with stepped fast axis are not supported. Using fast_axis_step=False')
+            if self.bline_repeat != 1:
+                self.bline_repeat = 1
+                warnings.warn('Bidirectional repeated B-lines not supported. Using bline_repeat=1')  
+  
+        self.fov = fov
+
+        self.samples_on = int(samples_on)
+        self.samples_settle = int(samples_settle)
+        self.samples_step = int(samples_step)
+        
+        self.rotation_rad = rotation_rad
+
+        if samples_off is None:
+            self.samples_off = int(samples_on)
+        else:
+            self.samples_off = int(samples_off)
 
         period_samples = self.samples_on + self.samples_off
         
         self.max_trigger_rate = max_trigger_rate
         self._sample_rate = self.max_trigger_rate * period_samples
 
-        aline_trig = np.concatenate([np.ones(self.samples_on), np.zeros(self.samples_off)])
+        single_aline_trig = np.concatenate([np.ones(self.samples_on), np.zeros(self.samples_off)])
         if self.fast_axis_step:  # If fast axis is stepped, trigger includes a settling time and step time
-            aline_trig = np.concatenate([np.zeros(self.samples_settle),
-                                         np.tile(aline_trig, self.aline_repeat),
-                                         np.zeros(self.samples_step)])
-
-        aline_trigs = np.tile(aline_trig, self.alines)  # Each line needs this many exposures
+            single_aline_trig = np.concatenate([np.zeros(self.samples_settle),
+                                                np.tile(single_aline_trig, self.aline_repeat),
+                                                np.zeros(self.samples_step)])
+            
+        aline_trigs = np.concatenate([np.zeros(self.samples_off), np.tile(single_aline_trig, self.alines)])  # Each line needs this many exposures
         
+        self.exposure_fraction = exposure_fraction
         if not self.fast_axis_step:
             # Exposures are padded such that they comprise exposure_fraction of the sweep
-            bline_pad = np.zeros(int((len(aline_trigs) * (1 - exposure_fraction)) / 2))    
+            bline_pad = np.zeros(int((len(aline_trigs) * (1 - self.exposure_fraction)) / 2))    
             self.true_exposure_fraction = 1 - (2 * len(bline_pad)) / len(aline_trigs)
             bline_exp = np.concatenate([bline_pad, aline_trigs, bline_pad])
         else:
             bline_exp = aline_trigs
         
-        self.bidirectional = bool(bidirectional)
+        # Flyback duty is the percentage of the imaging sweep to spend on flyback
+        self.flyback_duty = flyback_duty
+        flyback_pad = np.zeros(int((len(bline_exp) * self.flyback_duty) / (1 - self.flyback_duty)))
         if not self.bidirectional: # No flyback if the scan is bidirectional            
-            # Flyback duty is the percentage of the imaging sweep to spend on flyback
-            flyback_pad = np.zeros(int((len(bline_exp) * flyback_duty) / (1 - flyback_duty)))
             bline_trig = np.concatenate([bline_exp, flyback_pad])
-        
+        else:
+            bline_trig = bline_exp
+            
         # Apply B-line repeat
         bline_trig = np.tile(bline_trig, self.bline_repeat)
 
         if not self.fast_axis_step:
             
             # True peak of sweep is greater than desired field of view to compensate for the exposure fraction
-            fast_axis_peak = (fov[0] + fov[0] * (1 - self.true_exposure_fraction) * 1.4) / 2
+            fast_axis_peak = (fov[0] + fov[0] * (1 - self.true_exposure_fraction)) / 2
             
             # Fast axis is a simple saw
             fast_axis_scan = np.linspace(-fast_axis_peak, fast_axis_peak, len(bline_exp))
@@ -469,19 +484,30 @@ class RasterScanPattern(LineScanPattern):
         
         else:  # Fast axis stepped
             
-            fast_axis_scan = np.array([])
             positions = np.linspace(-fov[0] / 2, fov[0] / 2, self.alines)  # Exposure fraction is ignored
+            fast_axis_scan = positions[0] * np.ones(self.samples_off)  # Begin at first spot
             for i in range(len(positions) - 1):
-                fast_axis_scan = np.append(fast_axis_scan, positions[i] * np.ones(len(aline_trig) - self.samples_step))  # Scan spot
+                fast_axis_scan = np.append(fast_axis_scan, positions[i] * np.ones(len(single_aline_trig) - self.samples_step))  # Scan spot
                 fast_axis_scan = np.append(fast_axis_scan, np.linspace(positions[i], positions[i + 1], self.samples_step + 2)[1:-1])  # Transit to next
-            fast_axis_scan = np.append(fast_axis_scan, positions[-1] * np.ones(len(aline_trig)))  # Scan final spot
+            fast_axis_scan = np.append(fast_axis_scan, positions[-1] * np.ones(len(single_aline_trig)))  # Scan final spot
             fast_axis_flyback = np.linspace(positions[-1], positions[0], len(flyback_pad) + 2)[1:-1]
         
         # Apply B-line repeat
-        bline_scan = np.tile(np.concatenate([fast_axis_scan, fast_axis_flyback]), self.bline_repeat)
-        
-        x = np.tile(bline_scan, self.blines)
-        line_trig = np.tile(bline_trig, self.blines)
+        if not self.bidirectional:
+            bline_scan = np.tile(np.concatenate([fast_axis_scan, fast_axis_flyback]), self.bline_repeat)
+            x = np.tile(bline_scan, self.blines)
+            line_trig = np.tile(bline_trig, self.blines)
+        else:
+            remainder = self.blines % 2
+            half = int((self.blines - remainder) / 2)
+            bline_scan2 = np.concatenate([fast_axis_scan, fast_axis_scan[::-1]])
+            bline_trig2 = np.concatenate([bline_trig, bline_trig[::-1]])
+            x = np.tile(bline_scan2, half)
+            line_trig = np.tile(bline_trig2, half)
+            if bool(remainder):  # Odd-numered scans do not start where they left off
+                x = np.concatenate([x, fast_axis_scan])
+                line_trig = np.concatenate([line_trig, bline_trig])
+            
 
         if trigger_blines:
             f = np.zeros(len(bline_trig))
@@ -492,24 +518,46 @@ class RasterScanPattern(LineScanPattern):
             frame_trig[0:samples_on] = 1
 
         if self.blines > 1:
-            
-            slow_axis_flyback = np.linspace(-fov[1] / 2, fov[1] / 2, len(flyback_pad) + 2)[1:-1]
-
-            if self.slow_axis_step is False:
-                slow_axis_scan = np.linspace(fov[1] / 2, -fov[1] / 2, len(x) - len(fast_axis_flyback) + 2)[1:-1]
-            else:
-                slow_axis_scan = np.array([])
-                positions = np.linspace(fov[1] / 2, -fov[1] / 2, self.alines)
-                if self.bline_repeat > 1:
-                    scan_duration = self.bline_repeat * (len(fast_axis_scan) + len(fast_axis_flyback)) - len(fast_axis_flyback)
-                else:
-                    scan_duration = len(fast_axis_scan)
-                for i in range(len(positions) - 1):
-                    slow_axis_scan = np.append(slow_axis_scan, positions[i] * np.ones(scan_duration))  # Scan spot
-                    slow_axis_scan = np.append(slow_axis_scan, np.linspace(positions[i], positions[i + 1], len(fast_axis_flyback) + 2)[1:-1])  # Transit to next
-                slow_axis_scan = np.append(slow_axis_scan, positions[-1] * np.ones(scan_duration))  # Scan final spot
-            y = np.concatenate([slow_axis_scan, slow_axis_flyback])
         
+            slow_axis_flyback = np.linspace(-fov[1] / 2, fov[1] / 2, len(flyback_pad) + 2)[1:-1]
+            
+            if not self.bidirectional:
+                
+                if self.slow_axis_step is False:
+                    slow_axis_scan = np.linspace(fov[1] / 2, -fov[1] / 2, len(x) - len(fast_axis_flyback))
+                else:
+                    slow_axis_scan = np.array([])
+                    positions = np.linspace(fov[1] / 2, -fov[1] / 2, self.blines)
+                    if self.bline_repeat > 1:
+                        scan_duration = self.bline_repeat * (len(fast_axis_scan) + len(fast_axis_flyback)) - len(fast_axis_flyback)
+                    else:
+                        scan_duration = len(fast_axis_scan)
+                    for i in range(len(positions) - 1):
+                        slow_axis_scan = np.append(slow_axis_scan, positions[i] * np.ones(scan_duration))  # Scan spot
+                        slow_axis_scan = np.append(slow_axis_scan, np.linspace(positions[i], positions[i + 1], len(fast_axis_flyback) + 2)[1:-1])  # Transit to next
+                    slow_axis_scan = np.append(slow_axis_scan, positions[-1] * np.ones(scan_duration))  # Scan final spot
+                y = np.concatenate([slow_axis_scan, slow_axis_flyback])
+            
+            else:  # Bidirectional slow axis has different transit and flyback model based on exposure_fraction
+                
+                if self.slow_axis_step is False:
+                    slow_axis_scan = np.linspace(fov[1] / 2, -fov[1] / 2, len(x))
+                else:
+                    slow_axis_scan = np.array([])
+                    positions = np.linspace(fov[1] / 2, -fov[1] / 2, self.blines)
+                    slow_axis_scan = np.append(slow_axis_scan, positions[0] * np.ones(len(aline_trigs) + len(bline_pad)))  # Scan first spot
+                    slow_axis_scan = np.append(slow_axis_scan, np.linspace(positions[0], positions[1], 2 * len(bline_pad) + 2)[1:-1])  # Transit to second spot
+                    for i in range(1, len(positions) - 1):
+                        slow_axis_scan = np.append(slow_axis_scan, positions[i] * np.ones(len(aline_trigs)))  # Scan spot
+                        slow_axis_scan = np.append(slow_axis_scan, np.linspace(positions[i], positions[i + 1], 2 * len(bline_pad) + 2)[1:-1])  # Transit to next
+                    slow_axis_scan = np.append(slow_axis_scan, positions[-1] * np.ones(len(aline_trigs) + len(bline_pad)))  # Scan final spot
+                y = np.concatenate([slow_axis_scan, slow_axis_flyback])
+                if self.blines % 2 > 0:
+                    x = np.concatenate([x, np.linspace(x[-1], x[0], len(slow_axis_flyback))])
+                else:
+                    x = np.concatenate([x, np.ones(len(slow_axis_flyback)) * x[-1]])
+                line_trig = np.concatenate([line_trig, np.zeros(len(slow_axis_flyback))])
+                frame_trig = np.concatenate([frame_trig, np.zeros(len(slow_axis_flyback))])
         else:
             # If only 1 B-line, don't scan second axis at all
             y = np.zeros(len(x))
@@ -530,10 +578,10 @@ if __name__ == '__main__':
     
     import matplotlib
     import matplotlib.pyplot as plt
-    
+
     print('Generating demo figures...')
 
-    matplotlib.rcParams.update({'font.size': 20, 'font.family': 'monospace'})
+    matplotlib.rcParams.update({'font.size': 16, 'font.family': 'monospace'})
     
     patterns = [
         RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10),
@@ -541,6 +589,7 @@ if __name__ == '__main__':
         RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, bline_repeat=2),
         RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, fov=[1.5, 4.5], fast_axis_step=True, slow_axis_step=True),
         RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True, rotation_rad=np.pi/4),
+        RasterScanPattern(15, 15, 1, samples_on=1, samples_off=10, bidirectional=True, slow_axis_step=True),
         Figure8ScanPattern(1, 16, 1, samples_on=1, samples_off=10),
         RoseScanPattern(3, 1, 16, 1, samples_on=1, samples_off=10),
         RoseScanPattern(5, 1, 16, 1, samples_on=1, samples_off=10),
@@ -552,6 +601,7 @@ if __name__ == '__main__':
         'B-line repeated raster',
         'Rectangular raster',
         'Rotated raster',
+        'Bidirectional raster',
         'Figure-8',
         'Rose p=3',
         'Rose p=5',
@@ -563,6 +613,7 @@ if __name__ == '__main__':
         'rasterrpt.png',
         'rectraster.png',
         'rotraster.png',
+        'biraster.png',
         'fig8.png',
         'rose3.png',
         'rose5.png',
@@ -570,7 +621,7 @@ if __name__ == '__main__':
     
     for i, (pattern, title, fname) in enumerate(zip(patterns, titles, fnames)):
         
-        fig = plt.figure(i, constrained_layout=False, figsize=(5, 5))
+        fig = plt.figure(i, constrained_layout=False, figsize=(4, 4))
         
         gs = fig.add_gridspec(nrows=3, ncols=1, hspace=0.01)
         ax1 = fig.add_subplot(gs[0, 0])

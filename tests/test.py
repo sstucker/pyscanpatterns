@@ -15,16 +15,28 @@ def _measure_fov(raster: RasterScanPattern):
 
 def _print_line_scan_pattern(pattern: LineScanPattern):
     print('Pattern type:', pattern.__class__.__name__)
-    print('Number of samples', len(pattern.x))
-    print('Number of A-lines', pattern.total_number_of_alines)
-    print('Dimensions', pattern.dimensions)
-    print('Sample rate', pattern.sample_rate, 'Hz')
-    print('Pattern rate', pattern.pattern_rate, 'Hz')
+    print('Number of samples:', len(pattern.x))
+    print('Number of A-lines:', pattern.total_number_of_alines)
+    print('Dimensions:', pattern.dimensions)
+    print('Sample rate:', pattern.sample_rate, 'Hz')
+    print('Pattern rate:', pattern.pattern_rate, 'Hz')
+
+
+def _print_raster_pattern(raster: RasterScanPattern):
+    _print_line_scan_pattern(raster)
+    print('Ideal FOV:', raster.fov)
+    print('Actual FOV:', _measure_fov(raster))
+    print('Ideal exposure fraction:', raster.exposure_fraction)
+    print('Actual exposure fraction:', raster.true_exposure_fraction)
+    print('Flyback duty:', raster.flyback_duty)
+    print('Fast-axis step:', raster.fast_axis_step)
+    print('Slow-axis step:', raster.slow_axis_step)
+    print('Bidirectional:', raster.bidirectional)
 
 
 def _test_signal_len(test: unittest.TestCase, pat: LineScanPattern):
     test.assertTrue(all([len(pat.x) == len(l) for l in [pat.x, pat.y, pat.line_trigger, pat.frame_trigger]]),
-                    msg='Scan signals of ' + pat.__class__.__name__ + ' vary in length! Lengths:'+ str(len(pat.x))
+                    msg='Scan signals of ' + pat.__class__.__name__ + ' vary in length! Lengths: '+ str(len(pat.x))
                     + ' ' + str(len(pat.y)) + ' ' + str(len(pat.line_trigger)) + ' ' + str(len(pat.frame_trigger)))
 
 def _test_fov(test: unittest.TestCase, pat: RasterScanPattern, tolerance=0.1):
@@ -56,30 +68,36 @@ class scanpattern_test(unittest.TestCase):
             RasterScanPattern(64, 64, 76000),
             RasterScanPattern(128, 128, 76000),
             RasterScanPattern(256, 256, 76000),
-            RasterScanPattern(256, 256, 76000, fov=[10, 10]),
-            RasterScanPattern(256, 256, 76000, flyback_duty=0.1),
-            RasterScanPattern(256, 256, 76000, flyback_duty=0.2),
-            RasterScanPattern(256, 256, 76000, flyback_duty=0.3),
-            RasterScanPattern(256, 256, 76000, flyback_duty=0.4),
-            RasterScanPattern(256, 256, 76000, flyback_duty=0.5),
-            RasterScanPattern(256, 256, 76000, exposure_fraction=0.9),
-            RasterScanPattern(256, 256, 76000, exposure_fraction=0.8),
-            RasterScanPattern(256, 256, 76000, exposure_fraction=0.7),
-            RasterScanPattern(256, 256, 76000, exposure_fraction=0.6),
-            RasterScanPattern(256, 256, 76000, exposure_fraction=0.5),
-            RasterScanPattern(256, 256, 76000, fast_axis_step=True),
-            RasterScanPattern(256, 256, 76000, slow_axis_step=True),
-            RasterScanPattern(256, 256, 76000, slow_axis_step=True, fast_axis_step=True),
-            RasterScanPattern(256, 256, 76000, aline_repeat=2, bline_repeat=1),
-            RasterScanPattern(256, 256, 76000, aline_repeat=2, bline_repeat=2),
-            RasterScanPattern(256, 256, 76000, aline_repeat=1, bline_repeat=2),
+            RasterScanPattern(128, 128, 76000, fov=[10, 10]),
+            RasterScanPattern(128, 128, 76000, flyback_duty=0.1),
+            RasterScanPattern(128, 128, 76000, flyback_duty=0.2),
+            RasterScanPattern(128, 128, 76000, flyback_duty=0.3),
+            RasterScanPattern(128, 128, 76000, flyback_duty=0.4),
+            RasterScanPattern(128, 128, 76000, flyback_duty=0.5),
+            RasterScanPattern(128, 128, 76000, exposure_fraction=0.9),
+            RasterScanPattern(128, 128, 76000, exposure_fraction=0.8),
+            RasterScanPattern(128, 128, 76000, exposure_fraction=0.7),
+            RasterScanPattern(128, 128, 76000, exposure_fraction=0.6),
+            RasterScanPattern(128, 128, 76000, exposure_fraction=0.5),
+            RasterScanPattern(128, 128, 76000, fast_axis_step=True),
+            RasterScanPattern(128, 128, 76000, slow_axis_step=True),
+            RasterScanPattern(128, 128, 76000, slow_axis_step=True, fast_axis_step=True),
+            RasterScanPattern(128, 128, 76000, aline_repeat=2, bline_repeat=1),
+            RasterScanPattern(128, 128, 76000, aline_repeat=2, bline_repeat=2),
+            RasterScanPattern(128, 128, 76000, aline_repeat=1, bline_repeat=2),
+            RasterScanPattern(128, 128, 76000, aline_repeat=1, bline_repeat=2),
+            RasterScanPattern(128, 128, 76000, bidirectional=True),
+            RasterScanPattern(128, 128, 76000, bidirectional=True, slow_axis_step=True),
+            RasterScanPattern(65, 65, 76000, bidirectional=True, slow_axis_step=True),
+            RasterScanPattern(65, 65, 76000, bidirectional=True),
             ]
         for pat in patterns:
             _test_signal_len(self, pat)
-            x, y =_measure_fov(pat)
-            _test_fov(self, pat, 0.2)
-            _print_line_scan_pattern(pat)
-            print('FOV measured to be', x, y)
+            _print_raster_pattern(pat)
+            _test_fov(self, pat, 0.05)  # 5% FOV error tolerance
+            print('------------')
+            print('Test: PASSED')
+            print('------------')
             print()
 
     

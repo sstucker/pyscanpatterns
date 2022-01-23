@@ -1,4 +1,5 @@
-![testing](https://github.com/BUNPC/pyscanpatterns/actions/workflows/test.yml/badge.svg)
+![testing](https://github.com/sstucker/pyscanpatterns/actions/workflows/test.yml/badge.svg)
+[![PyPI version](https://badge.fury.io/py/scanpatterns.svg)](https://badge.fury.io/py/scanpatterns)
 
 # PyScanPatterns
 Parametric scan patterns for laser scanning microscopy.

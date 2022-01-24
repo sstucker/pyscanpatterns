@@ -62,6 +62,13 @@ class scanpattern_test(unittest.TestCase):
         _test_signal_len(self, pat)
         _print_line_scan_pattern(pat)
         print()
+        
+    def test_circle(self):
+        pat = CircleScanPattern()
+        pat.generate(64, 2.0, 76000)
+        _test_signal_len(self, pat)
+        _print_line_scan_pattern(pat)
+        print()
 
     def test_raster(self):
         patterns = [

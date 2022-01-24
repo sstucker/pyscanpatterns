@@ -314,6 +314,82 @@ class RoseScanPattern(LineScanPattern):
         self._pattern_rate = 1 / ((1 / self._sample_rate) * len(x))
 
 
+class CircleScanPattern(LineScanPattern):
+
+    def __init__(self, *args, **kwargs):
+    
+        super().__init__()
+        
+        self.alines = None
+        self.diameter = None
+        self.max_trigger_rate = None
+        self.rotation_rad = None
+        self.samples_on = None
+        self.samples_off = None
+        
+        if len(args) > 0:
+            self.generate(*args, **kwargs)
+            
+    @property
+    def dimensions(self):
+        """Returns [number of a-lines, number of b-lines]."""
+        return [self.alines, 1]
+
+    @property
+    def total_number_of_alines(self):
+        return int(self.alines)            
+
+    def generate(self,
+                 alines: int,
+                 diameter: float,
+                 max_trigger_rate: float, 
+                 rotation_rad: float = 0.0,
+                 samples_on: int = 1,
+                 samples_off: int = None
+                 ):
+        """Generate a circle pattern of any number of A-lines.
+
+        For a rose pattern with 2 B-scans, use a `Figure8ScanPattern`.
+
+        Args:
+            alines (int): The number of A-lines in the circle.
+            diameter (float): The diameter of the circle.
+            max_trigger_rate (float): The maximum rate in Hz at which to toggle the line trigger signal. This is the constraint on imaging rate.
+            samples_on (int): Optional. The number of trigger samples to drive high for each exposure. Default 2.
+            samples_off (int): Optional. The number of trigger samples to drive low after each exposure. By default, equivalent to `samples_on`.
+            rotation_rad (float): Optional. Rotates the scan. Default 0.
+        """
+        self.alines = int(alines)
+        self.diameter = diameter
+        self.rotation_rad = rotation_rad
+        
+        self.samples_on = int(samples_on)
+        if samples_off is None:
+            self.samples_off = int(self.samples_on)
+        else:
+            self.samples_off = int(samples_off)
+
+        period_samples = self.samples_on + self.samples_off
+        
+        self.max_trigger_rate = max_trigger_rate
+        self._sample_rate = self.max_trigger_rate * period_samples
+
+        single_aline_trig = np.concatenate([np.ones(self.samples_on), np.zeros(self.samples_off)])
+        trigger = np.tile(single_aline_trig, self.alines)
+        
+        self.radius = self.diameter / 2
+        t = np.linspace(0, 2*np.pi, len(trigger))
+        
+        x = np.cos(t) * self.radius
+        y = np.sin(t) * self.radius
+        
+        self._x, self._y = _rotfunc(x, y, self.rotation_rad)
+        self._line_trigger = trigger
+        ft = np.zeros(len(self._x))
+        ft[0:self.samples_on] = 1
+        self._frame_trigger = ft
+
+
 class RasterScanPattern(LineScanPattern):
 
     def __init__(self, *args, **kwargs):
@@ -584,15 +660,18 @@ if __name__ == '__main__':
     matplotlib.rcParams.update({'font.size': 16, 'font.family': 'monospace'})
     
     patterns = [
-        RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10),
-        RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True),
-        RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, bline_repeat=2),
-        RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, fov=[1.5, 4.5], fast_axis_step=True, slow_axis_step=True),
-        RasterScanPattern(16, 16, 1, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True, rotation_rad=np.pi/4),
-        RasterScanPattern(15, 15, 1, samples_on=1, samples_off=10, bidirectional=True, slow_axis_step=True),
-        Figure8ScanPattern(1, 16, 1, samples_on=1, samples_off=10),
-        RoseScanPattern(3, 1, 16, 1, samples_on=1, samples_off=10),
-        RoseScanPattern(5, 1, 16, 1, samples_on=1, samples_off=10),
+        RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10),
+        RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True),
+        RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, bline_repeat=2),
+        RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fov=[1.5, 4.5], fast_axis_step=True, slow_axis_step=True),
+        RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True, rotation_rad=np.pi/4),
+        RasterScanPattern(15, 15, 76000, samples_on=1, samples_off=10, bidirectional=True, slow_axis_step=True),
+        RasterScanPattern(15, 1, 76000, samples_on=1, samples_off=10),
+        RasterScanPattern(15, 1, 76000, samples_on=1, samples_off=10, bidirectional=True, rotation_rad=np.pi/8),
+        CircleScanPattern(64, 1.0, 76000, samples_on=1),
+        Figure8ScanPattern(1, 16, 76000, samples_on=1, samples_off=10),
+        RoseScanPattern(3, 1, 16, 76000, samples_on=1, samples_off=10),
+        RoseScanPattern(5, 1, 16, 76000, samples_on=1, samples_off=10),
         ]
     
     titles = [
@@ -602,6 +681,9 @@ if __name__ == '__main__':
         'Rectangular raster',
         'Rotated raster',
         'Bidirectional raster',
+        'Line scan',
+        'Bidirectional line scan',
+        'Circle',
         'Figure-8',
         'Rose p=3',
         'Rose p=5',
@@ -614,6 +696,9 @@ if __name__ == '__main__':
         'rectraster.png',
         'rotraster.png',
         'biraster.png',
+        'line.png',
+        'biline.png',
+        'circle.png',
         'fig8.png',
         'rose3.png',
         'rose5.png',

@@ -52,7 +52,7 @@ RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, bline_repeat=2)
 
 ![Rectangular raster](https://raw.githubusercontent.com/sstucker/pyscanpatterns/master/img/rectraster.png)
 ```python
-RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fov=[1.5, 4.5], fast_axis_step=True, slow_axis_step=True)
+RasterScanPattern(16, 16, 76000, fov=[1.5, 4.5], samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True)
 ```
 
 ![Rotated raster](https://raw.githubusercontent.com/sstucker/pyscanpatterns/master/img/rotraster.png)

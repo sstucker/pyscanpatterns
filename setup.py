@@ -13,7 +13,7 @@ from setuptools import find_packages, setup, Command
 
 from scanpatterns.__version__ import __version__ as VERSION
 
-NAME = 'scanpatterns'
+NAME = 'PyScanPatterns'
 
 about = {}
 about['__version__'] = VERSION

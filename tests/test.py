@@ -16,7 +16,7 @@ def _measure_fov(raster: RasterScanPattern):
 def _print_line_scan_pattern(pattern: LineScanPattern):
     print('Pattern type:', pattern.__class__.__name__)
     print('Number of samples:', len(pattern.x))
-    print('Number of A-lines:', pattern.total_number_of_alines)
+    print('Number of A-lines:', pattern.points_in_image)
     print('Dimensions:', pattern.dimensions)
     print('Sample rate:', pattern.sample_rate, 'Hz')
     print('Pattern rate:', pattern.pattern_rate, 'Hz')

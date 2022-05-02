@@ -376,11 +376,7 @@ class CircleScanPattern(LineScanPattern):
     @property
     def dimensions(self):
         """Returns [number of a-lines, number of b-lines]."""
-        return [self.alines, 1]
-
-    @property
-    def points_in_image(self):
-        return int(self.alines)            
+        return [self.alines, 1]        
 
     def generate(self,
                   alines: int,
@@ -406,6 +402,8 @@ class CircleScanPattern(LineScanPattern):
         self.diameter = diameter
         self.rotation_rad = rotation_rad
         
+        self._points_in_scan = self.alines
+        
         self.samples_on = int(samples_on)
         if samples_off is None:
             self.samples_off = int(self.samples_on)
@@ -428,6 +426,8 @@ class CircleScanPattern(LineScanPattern):
         
         self._x, self._y = _rotfunc(x, y, self.rotation_rad)
         self._line_trigger = trigger
+        self._points_in_image = self._points_in_scan
+        self._image_mask = np.ones(self._points_in_scan).astype(bool)
         ft = np.zeros(len(self._x))
         ft[0:self.samples_on] = 1
         self._frame_trigger = ft
@@ -463,11 +463,6 @@ class RasterScanPattern(LineScanPattern):
     def dimensions(self) -> (int, int):
         """Returns (number of a-lines, number of b-lines) excluding repeats."""
         return self.alines, self.blines
-
-    @property
-    def image_mask(self) -> np.ndarray:
-        """Boolean array"""
-        return self._image_mask
 
     def generate(self, alines: int,
                  blines: int,

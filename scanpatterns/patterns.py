@@ -454,7 +454,7 @@ class RasterScanPattern(LineScanPattern):
         self.bline_repeat = 0
         self.trigger_blines = 0
         self.true_exposure_fraction = 0
-        self._image_mask = np.array([]).astype(np.bool)
+        self._image_mask = np.array([]).astype(bool)
 
         if len(args) > 0:
             self.generate(*args, **kwargs)
@@ -463,14 +463,6 @@ class RasterScanPattern(LineScanPattern):
     def dimensions(self) -> (int, int):
         """Returns (number of a-lines, number of b-lines) excluding repeats."""
         return self.alines, self.blines
-
-    @property
-    def points_in_image(self) -> int:
-        """Returns total number of A-line exposures, including repeats."""
-        if any([None is value for value in [self.alines, self.aline_repeat, self.bline_repeat]]):
-            return 0
-        else:
-            return int(self.alines * self.aline_repeat * self.blines * self.bline_repeat)
 
     @property
     def image_mask(self) -> np.ndarray:
@@ -526,15 +518,14 @@ class RasterScanPattern(LineScanPattern):
 
         self.aline_repeat = int(aline_repeat)
         self.bline_repeat = int(bline_repeat)
-
+        
+        self._points_in_image = self.alines * self.aline_repeat * self.blines * self.bline_repeat
+        
         self.fast_axis_step = fast_axis_step
         self.slow_axis_step = slow_axis_step
 
         if aline_repeat < 2:
             self.aline_repeat = 1
-        else:
-            # A-line repeat must use stepped fast axis
-            self.fast_axis_step = True
 
         if bline_repeat < 2:
             self.bline_repeat = 1
@@ -572,11 +563,9 @@ class RasterScanPattern(LineScanPattern):
         self.max_trigger_rate = max_trigger_rate
         self._sample_rate = self.max_trigger_rate * period_samples
 
-        # print('For max trigger rate of', max_trigger_rate, 'DAC output must be', self._sample_rate)
-
+        # Round these to the trigger period
         self.samples_settle = period_samples * round(samples_settle / period_samples)
         self.samples_step = period_samples * round(samples_step / period_samples)
-        # print('Samples settle and step lengths:', self.samples_settle, self.samples_step)
 
         if self.fast_axis_step:  # If fast axis is stepped, trigger includes a settling time and step time
             single_position_trig = np.concatenate([np.zeros(self.samples_settle),
@@ -584,8 +573,6 @@ class RasterScanPattern(LineScanPattern):
                                                 np.zeros(self.samples_step)])
         else:
             single_position_trig = single_aline_trig
-        
-        # print('Single A-line trigger is', len(single_position_trig), 'samples in length')
 
         aline_trigs = np.concatenate([np.zeros(period_samples), np.tile(single_position_trig, self.alines)])  # Each line needs this many exposures
 
@@ -594,7 +581,6 @@ class RasterScanPattern(LineScanPattern):
             # Exposures are padded such that they comprise exposure_fraction of the sweep
             pad_size = period_samples * round(int((len(aline_trigs) * (1 - self.exposure_fraction)) / 2) / period_samples)
             bline_pad = np.zeros(pad_size)
-            # print('B-line pad is', len(bline_pad), 'samples long')
             self.true_exposure_fraction = 1 - (2 * len(bline_pad)) / len(aline_trigs)
             bline_exp = np.concatenate([bline_pad, aline_trigs, bline_pad])
             bline_start_offset = len(bline_pad) + period_samples
@@ -605,7 +591,6 @@ class RasterScanPattern(LineScanPattern):
         # Flyback duty is the percentage of the imaging sweep to spend on flyback
         self.flyback_duty = flyback_duty
         flyback_size = period_samples * round(int(len(bline_exp) * self.flyback_duty) / period_samples)
-        # print('Flyback size is', flyback_size, 'samples long')
         flyback_pad = np.zeros(flyback_size)
         if not self.bidirectional: # No flyback if the scan is bidirectional            
             bline_trig = np.concatenate([bline_exp, flyback_pad])
@@ -614,8 +599,6 @@ class RasterScanPattern(LineScanPattern):
 
         # Apply B-line repeat
         bline_trig = np.tile(bline_trig, self.bline_repeat)
-
-        # print('B-line trig matches running trigger rate:', len(bline_trig) % period_samples == 0, 'Length', len(bline_trig))
 
         if not self.fast_axis_step:
 
@@ -636,9 +619,6 @@ class RasterScanPattern(LineScanPattern):
                 fast_axis_scan = np.append(fast_axis_scan, np.linspace(positions[i], positions[i + 1], self.samples_step + 2)[1:-1])  # Transit to next
             fast_axis_scan = np.append(fast_axis_scan, positions[-1] * np.ones(len(single_position_trig)))  # Scan final spot
             fast_axis_flyback = np.linspace(positions[-1], positions[0], len(flyback_pad) + 2)[1:-1]
-
-        # print('fast_axis_scan', len(fast_axis_scan))
-        # print('fast_axis_flyback', len(fast_axis_flyback))
 
         # Apply B-line repeat
         if not self.bidirectional:
@@ -732,16 +712,17 @@ class RasterScanPattern(LineScanPattern):
 
         self._x, self._y = _rotfunc(self._x, self._y, rotation_rad)
         
-        self._positions = np.empty([self.points_in_image, 2]).astype(np.float64)
-        f = 0
+        pos = []
         # Build mask array that is high for triggers which form the image
         for i in range(points_in_scan):
             for j in range(period_samples):
                 if line_trig[i * period_samples + j] > 0:
                     mask[i] = 1
-                    self._positions[f, :] = [self._x[i * period_samples + j], self._y[i * period_samples + j]]
-                    f += 1
+                    pos.append([self._x[i * period_samples + j], self._y[i * period_samples + j]])
+                    for k in range(self.aline_repeat - 1):
+                        pos.append([self._x[i * period_samples + j + period_samples * k], self._y[i * period_samples + j + period_samples * k]])
                     break
+        self._positions = np.array(pos)
 
         self._points_in_scan = points_in_scan
         self._image_mask = mask
@@ -755,18 +736,21 @@ class RasterScanPattern(LineScanPattern):
 if __name__ == '__main__':
     
     DPI = 96
+    FOLDER = 'img/'
     
+    import os
     import matplotlib
     import matplotlib.pyplot as plt
 
     print('Generating demo figures...')
-
+    
     matplotlib.rcParams.update({'font.size': 16, 'font.family': 'monospace'})
     
     patterns = [
         RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10),
         RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True),
         RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, bline_repeat=2),
+        RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, aline_repeat=2),
         RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fov=[1.5, 4.5], fast_axis_step=True, slow_axis_step=True),
         RasterScanPattern(16, 16, 76000, samples_on=1, samples_off=10, fast_axis_step=True, slow_axis_step=True, rotation_rad=np.pi/4),
         RasterScanPattern(15, 15, 76000, samples_on=1, samples_off=10, bidirectional=True, slow_axis_step=True),
@@ -782,6 +766,7 @@ if __name__ == '__main__':
         'Classic raster',
         'Stepped raster',
         'B-line repeated raster',
+        'A-line repeated raster',
         'Rectangular raster',
         'Rotated raster',
         'Bidirectional raster',
@@ -796,7 +781,8 @@ if __name__ == '__main__':
     fnames = [
         'raster.png',
         'rasterstep.png',
-        'rasterrpt.png',
+        'rasterbrpt.png',
+        'rasterarpt.png',
         'rectraster.png',
         'rotraster.png',
         'biraster.png',
@@ -815,26 +801,31 @@ if __name__ == '__main__':
         gs = fig.add_gridspec(nrows=3, ncols=1, hspace=0.01)
         ax1 = fig.add_subplot(gs[0, 0])
         ax2 = fig.add_subplot(gs[1:, 0])
-    
+        
         ax1.set_title(title, pad=2)
         ax1.plot(pattern.x)
         ax1.plot(pattern.y)
-        ax1.stem(pattern.line_trigger, markerfmt='None', linefmt='black')
+        ax1.stem(np.repeat(pattern.image_mask.astype(int), int(len(pattern.x) / len(pattern.image_mask))),
+                 markerfmt='None', linefmt='black')
         ax1.set_frame_on(False)
         ax1.set_xticks([])
         ax1.set_yticks([])
     
         ax2.set_aspect('equal')
         ax2.plot(np.tile(pattern.x, 2), np.tile(pattern.y, 2), color='lightgrey')
-        # ax2.scatter(pattern.x[pattern.line_trigger.astype(bool)],
-        #             pattern.y[pattern.line_trigger.astype(bool)],
-        #             marker='.', color='black', zorder=10)
         ax2.scatter(pattern.positions[:, 0], pattern.positions[:, 1],
                     marker='.', color='black', zorder=10)
         ax2.set_frame_on(False)
         ax2.set_xticks([])
         ax2.set_yticks([])
     
-        fig.savefig('img/' + fname, dpi=DPI)
+        fname = FOLDER + '/' + fname
+        
+        try:
+            os.remove(fname)
+        except FileNotFoundError:
+            pass
+        
+        fig.savefig(fname, dpi=DPI)
     
         plt.close(i)

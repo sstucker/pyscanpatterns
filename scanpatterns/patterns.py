@@ -47,8 +47,8 @@ class LineScanPattern:
         self._positions = np.array([]).astype(np.float64)
         self._image_mask = np.array([]).astype(bool)
         self._dimensions = []
-        self._points_per_scan: int = 0
-        self._points_per_image: int = 0
+        self._points_in_scan: int = 0
+        self._points_in_image: int = 0
         self._sample_rate: int = 0
         self._pattern_rate: int = 0
         self._samples_on: int = 0
@@ -567,7 +567,7 @@ class RasterScanPattern(LineScanPattern):
                                                 np.tile(single_aline_trig, self.aline_repeat),
                                                 np.zeros(self.samples_step)])
         else:
-            single_position_trig = single_aline_trig
+            single_position_trig = np.tile(single_aline_trig, self.aline_repeat)
 
         aline_trigs = np.concatenate([np.zeros(period_samples), np.tile(single_position_trig, self.alines)])  # Each line needs this many exposures
 

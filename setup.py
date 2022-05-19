@@ -58,8 +58,8 @@ class UploadCommand(Command):
         os.system('twine upload dist/*')
 
         self.status('Pushing git tags…')
-        os.system('git tag v{0}'.format(about['__version__']))
-        os.system('git push --tags')
+        os.system('git tag v{0} -f'.format(about['__version__']))
+        os.system('git push --tags -f')
 
         sys.exit()
 

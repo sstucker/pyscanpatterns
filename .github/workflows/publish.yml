@@ -23,8 +23,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/setup-python@v1
       - name: Install Python 3
-        uses: actions/setup-python@v1
         with:
           python-version: '3.6'
           
@@ -39,5 +39,5 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
-          python setup.py sdist bdist_wheel --universal
-          twine upload dist/*           
+          python setup.py sdist bdist_wheel
+          twine upload dist/*       

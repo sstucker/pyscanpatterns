@@ -13,7 +13,7 @@ from setuptools import find_packages, setup, Command
 
 from scanpatterns.__version__ import __version__ as VERSION
 
-NAME = 'PyScanPatterns'
+NAME = 'scanpatterns'
 
 about = {}
 about['__version__'] = VERSION
@@ -77,7 +77,7 @@ setup(
         'setuptools',
         'pip'
     ],
-    url='https://github.com/sstucker/PyScanPattern',
+    url='https://github.com/sstucker/pyscanpatterns',
     packages=find_packages(exclude=('tests')),
     include_package_data=True,
     license='GPLv3',

@@ -6,7 +6,7 @@
 # separate terms of service, privacy policy, and support
 # documentation.
 
-name: Publish to PyPI
+name: Publish to PyPI 📦
 
 on:
   push:
@@ -31,9 +31,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install setuptools wheel twine
           pip install -r requirements.txt
           
-      - name: Publish
+      - name: Publish 
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}

@@ -6,7 +6,7 @@ Parametric scan patterns for imaging applications.
 
 Galvo drive signals, line camera/PMT exposure triggers, and frame/digitizer triggers are generated given a scan type and parameters. The exposure pulse is defined by the `samples_on` and `samples_off` parameters and this period (`samples_on + samples_off`) is used to create a pattern with a fixed number of exposures for a given `max_line_rate`. 
 
-Used for an SD-OCT imaging system, but should work for ultrasound and laser scanning microscopy applications.
+Used for an SD-OCT imaging system, but should work for other laser scanning microscopy applications.
 
 ## Installation
 ```
